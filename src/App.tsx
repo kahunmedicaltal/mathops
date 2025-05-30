@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { DragEvent } from 'react'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
@@ -157,34 +157,48 @@ const EqualsSign = styled.div`
   margin: 0 0.5rem;
 `
 
-const ResultDisplay = styled(DropTarget)`
+const ResultDisplay = styled(DropTarget)<{ isUsed?: boolean; isResultUsed?: boolean; isLastLine?: boolean }>`
   color: ${props => props.color || '#333'};
-  border: none;
-  background-color: white;
-  cursor: pointer;
+  border: ${props => props.isLastLine ? '2px solid #646cff' : 'none'};  // Target number color
+  background-color: ${props => {
+    if (props.isResultUsed) return '#f5f5f5';
+    if (props.isUsed) return 'white';
+    return '#f0f0f0';
+  }};
+  cursor: ${props => props.isResultUsed ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.isResultUsed ? 0.5 : 1};
+  min-width: 70px;
+  text-align: center;
 
   &:hover {
-    background-color: #f0f0ff;
+    background-color: ${props => {
+      if (props.isResultUsed) return '#f5f5f5';
+      if (props.isUsed) return '#f0f0ff';
+      return '#e8e8e8';
+    }};
   }
 `
 
-const DraggableNumber = styled.div`
+const DraggableNumber = styled.div<{ isUsed?: boolean }>`
   background-color: white;
   padding: 1rem;
   border-radius: 8px;
   min-width: 70px;
   font-size: 1.2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  cursor: grab;
+  cursor: ${props => props.isUsed ? 'not-allowed' : 'pointer'};
   user-select: none;
-  transition: transform 0.2s;
+  transition: all 0.2s;
+  opacity: ${props => props.isUsed ? 0.5 : 1};
+  background-color: ${props => props.isUsed ? '#f5f5f5' : 'white'};
 
   &:hover {
-    transform: scale(1.05);
+    transform: ${props => props.isUsed ? 'none' : 'scale(1.05)'};
+    background-color: ${props => props.isUsed ? '#f5f5f5' : '#f0f0ff'};
   }
 
   &:active {
-    cursor: grabbing;
+    cursor: ${props => props.isUsed ? 'not-allowed' : 'grabbing'};
   }
 `
 
@@ -220,14 +234,84 @@ interface SolutionStep {
   result: number;
 }
 
+type Position = 'n1' | 'n2' | 'op' | 'result'
+type DropPosition = 'n1' | 'n2' | 'op'
+
+const ButtonContainer = styled.div`
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+`
+
+// Simplify formatNumber to only take the number value
+const formatNumber = (value: number): string => {
+  // If it's a whole number, return it as is
+  if (Number.isInteger(value)) {
+    return value.toString()
+  }
+
+  // If it has 2 or fewer decimal places, return the decimal
+  const decimalStr = value.toString()
+  const decimalPlaces = decimalStr.includes('.') ? decimalStr.split('.')[1].length : 0
+  if (decimalPlaces <= 2) {
+    return decimalStr
+  }
+
+  // For numbers with more than 2 decimal places, convert to fraction
+  const tolerance = 1.0E-6
+  let h1 = 1, h2 = 0
+  let k1 = 0, k2 = 1
+  let b = value
+  do {
+    const a = Math.floor(b)
+    let aux = h1
+    h1 = a * h1 + h2
+    h2 = aux
+    aux = k1
+    k1 = a * k1 + k2
+    k2 = aux
+    b = 1 / (b - a)
+  } while (Math.abs(value - h1 / k1) > value * tolerance)
+
+  // Simplify the fraction
+  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+  const divisor = gcd(Math.abs(h1), Math.abs(k1))
+  h1 = h1 / divisor
+  k1 = k1 / divisor
+
+  // Format the fraction
+  if (k1 === 1) return h1.toString()
+  if (h1 > k1) {
+    const whole = Math.floor(h1 / k1)
+    const remainder = h1 % k1
+    return remainder === 0 ? whole.toString() : `${whole} ${remainder}/${k1}`
+  }
+  return `${h1}/${k1}`
+}
+
 function App() {
-  const [gameStarted, setGameStarted] = useState(false)
   const [numbers, setNumbers] = useState<number[]>([])
   const [target, setTarget] = useState<number>(0)
   const [calculationLines, setCalculationLines] = useState<CalculationLine[]>(
     Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false })
   )
   const [showSuccess, setShowSuccess] = useState(false)
+
+  useEffect(() => {
+    generateRandomNumbers()
+  }, [])
+
+  const generateRandomNumbers = () => {
+    const shuffled = [...AVAILABLE_NUMBERS].sort(() => Math.random() - 0.5)
+    const selectedNumbers = shuffled.slice(0, 6)
+    const randomTarget = Math.floor(Math.random() * (1000 - 50) + 50)
+    
+    setNumbers(selectedNumbers)
+    setTarget(randomTarget)
+    setCalculationLines(Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }))
+    setShowSuccess(false)
+  }
 
   // Calculate used numbers from calculationLines
   const getUsedNumbers = () => {
@@ -263,32 +347,18 @@ function App() {
     return false
   }
 
-  const generateRandomNumbers = () => {
-    const shuffled = [...AVAILABLE_NUMBERS].sort(() => Math.random() - 0.5)
-    const selectedNumbers = shuffled.slice(0, 6)
-    const randomTarget = Math.floor(Math.random() * (1000 - 50) + 50)
-    
-    setNumbers(selectedNumbers)
-    setTarget(randomTarget)
-    setGameStarted(true)
-    setCalculationLines(Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }))
-    setShowSuccess(false)
-  }
-
   const handleDragStart = (e: DragEvent, value: number | string, type: 'number' | 'operation' | 'result', lineIndex?: number) => {
     if (type === 'number') {
-      e.dataTransfer.setData('text/plain', `number:${value}:generated`)
+      e.dataTransfer.setData('text/plain', `number|${value}|generated`)
     } else if (type === 'result' && lineIndex !== undefined) {
-      e.dataTransfer.setData('text/plain', `result:${value}:${lineIndex}`)
+      e.dataTransfer.setData('text/plain', `result|${value}|${lineIndex}`)
     } else {
-      e.dataTransfer.setData('text/plain', `${type}:${value}`)
+      e.dataTransfer.setData('text/plain', `${type}|${value}`)
     }
   }
 
-  const handleDrop = (e: DragEvent, lineIndex: number, position: 'n1' | 'n2' | 'op') => {
-    e.preventDefault()
-    const data = e.dataTransfer.getData('text/plain')
-    const [type, value, origin] = data.split(':')
+  const handleDrop = (lineIndex: number, position: DropPosition, data: string) => {
+    const [type, value, origin] = data.split('|')
     
     if (type === 'number' && (position === 'n1' || position === 'n2')) {
       const numValue = Number(value)
@@ -313,6 +383,10 @@ function App() {
         calculateLineResult(lineIndex, newLines)
       }
     } else if (type === 'operation' && position === 'op') {
+      // For operations, we need to ensure n1 is filled
+      const line = calculationLines[lineIndex]
+      if (line.n1 === null) return
+
       const newLines = [...calculationLines]
       const updatedLine = {
         ...newLines[lineIndex],
@@ -361,8 +435,23 @@ function App() {
     if (line.n1 === null || line.op === null || line.n2 === null) return
 
     try {
-      const exprString = `${line.n1.value} ${line.op} ${line.n2.value}`
+      // Convert division operator and ensure we have valid numbers
+      const n1 = line.n1.value
+      const n2 = line.n2.value
+      const op = line.op === ':' ? '/' : line.op
+
+      // Only prevent division by zero
+      if (op === '/' && n2 === 0) {
+        return
+      }
+
+      const exprString = `${n1} ${op} ${n2}`
       const result = new Function(`return ${exprString}`)()
+      
+      // Allow any positive number (including decimals)
+      if (result <= 0) {
+        return
+      }
       
       const newLines = [...lines]
       newLines[lineIndex] = {
@@ -388,7 +477,7 @@ function App() {
     e.preventDefault()
   }
 
-  const handleCellClick = (lineIndex: number, position: 'n1' | 'op' | 'n2') => {
+  const handleCellClick = (lineIndex: number, position: DropPosition) => {
     const line = calculationLines[lineIndex]
     const value = line[position]
     
@@ -560,109 +649,145 @@ function App() {
     }
   }
 
+  const findNextAvailablePosition = (type: 'number' | 'operation'): { lineIndex: number; position: DropPosition } | null => {
+    for (let lineIndex = 0; lineIndex < calculationLines.length; lineIndex++) {
+      const line = calculationLines[lineIndex]
+      
+      if (type === 'number') {
+        // For numbers, try n1 first, then n2
+        if (line.n1 === null) {
+          return { lineIndex, position: 'n1' }
+        }
+        if (line.n2 === null && line.n1 !== null && line.op !== null) {
+          return { lineIndex, position: 'n2' }
+        }
+      } else if (type === 'operation') {
+        // For operations, only try op position if n1 is filled
+        if (line.op === null && line.n1 !== null) {
+          return { lineIndex, position: 'op' }
+        }
+      }
+    }
+    return null
+  }
+
+  const handleClick = (value: number | string, type: 'number' | 'operation' | 'result', lineIndex?: number) => {
+    if (type === 'result' && lineIndex !== undefined) {
+      // For results, use the same logic as drag
+      const nextPos = findNextAvailablePosition('number')
+      if (nextPos) {
+        const resultValue = calculationLines[lineIndex].result
+        if (resultValue !== null) {
+          const data = `result|${resultValue}|${lineIndex}`
+          handleDrop(nextPos.lineIndex, nextPos.position, data)
+        }
+      }
+    } else {
+      // For numbers and operations
+      const nextPos = findNextAvailablePosition(type as 'number' | 'operation')
+      if (nextPos) {
+        const data = type === 'number' ? `number|${value}|generated` : `operation|${value}`
+        handleDrop(nextPos.lineIndex, nextPos.position, data)
+      }
+    }
+  }
+
   return (
     <Container>
-      <Title>Number Game</Title>
-      {!gameStarted ? (
-        <Button onClick={generateRandomNumbers}>Start Game</Button>
-      ) : (
-        <GameContainer>
-          <TargetNumber>Target: {target}</TargetNumber>
-          
-          <NumbersContainer>
-            {numbers.map((num, index) => {
-              const usedNumbers = getUsedNumbers()
-              return (
-                <DraggableNumber
-                  key={index}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, num, 'number')}
-                  style={{ 
-                    opacity: usedNumbers[index] ? 0.5 : 1,
-                    cursor: usedNumbers[index] ? 'not-allowed' : 'grab'
-                  }}
-                >
-                  {num}
-                </DraggableNumber>
-              )
-            })}
-          </NumbersContainer>
-
-          <OperationsContainer>
-            <OperationsRow>
-              {OPERATIONS.map((op) => (
-                <DraggableOperation
-                  key={op}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, op, 'operation')}
-                >
-                  {op}
-                </DraggableOperation>
-              ))}
-            </OperationsRow>
-          </OperationsContainer>
-
-          <CalculationLinesContainer>
-            {calculationLines.map((line, lineIndex) => (
-              <CalculationLine key={lineIndex}>
-                <DropTarget
-                  onDrop={(e) => handleDrop(e, lineIndex, 'n1')}
-                  onDragOver={handleDragOver}
-                  isUsed={line.n1 !== null}
-                  isAnimating={line.isAnimating}
-                  onClick={() => handleCellClick(lineIndex, 'n1')}
-                >
-                  {line.n1?.value ?? '?'}
-                </DropTarget>
-                <OperationDropTarget
-                  onDrop={(e) => handleDrop(e, lineIndex, 'op')}
-                  onDragOver={handleDragOver}
-                  isUsed={line.op !== null}
-                  isAnimating={line.isAnimating}
-                  onClick={() => handleCellClick(lineIndex, 'op')}
-                >
-                  {line.op ?? '?'}
-                </OperationDropTarget>
-                <DropTarget
-                  onDrop={(e) => handleDrop(e, lineIndex, 'n2')}
-                  onDragOver={handleDragOver}
-                  isUsed={line.n2 !== null}
-                  isAnimating={line.isAnimating}
-                  onClick={() => handleCellClick(lineIndex, 'n2')}
-                >
-                  {line.n2?.value ?? '?'}
-                </DropTarget>
-                <EqualsSign>=</EqualsSign>
-                {line.result !== null ? (
-                  <ResultDisplay
-                    draggable={!isResultUsed(lineIndex)}
-                    onDragStart={(e) => handleDragStart(e, line.result!, 'result', lineIndex)}
-                    color={lineIndex === 4 && line.result === target ? '#4CAF50' : '#333'}
-                    style={{ 
-                      opacity: isResultUsed(lineIndex) ? 0.5 : 1,
-                      cursor: isResultUsed(lineIndex) ? 'not-allowed' : 'pointer'
-                    }}
-                    isAnimating={line.isAnimating}
-                  >
-                    {line.result}
-                  </ResultDisplay>
-                ) : (
-                  <ResultDisplay isAnimating={line.isAnimating}>?</ResultDisplay>
-                )}
-              </CalculationLine>
+      <Title>Reach the target using all 6 numbers</Title>
+      <GameContainer>
+        <TargetNumber>Target: {target}</TargetNumber>
+        <NumbersContainer>
+          {numbers.map((num, index) => {
+            const usedNumbers = getUsedNumbers()
+            return (
+              <DraggableNumber
+                key={`${num}-${index}`}
+                draggable={!usedNumbers[index]}
+                isUsed={usedNumbers[index]}
+                onDragStart={(e) => handleDragStart(e, num, 'number')}
+                onClick={() => !usedNumbers[index] && handleClick(num, 'number')}
+              >
+                {num}
+              </DraggableNumber>
+            )
+          })}
+        </NumbersContainer>
+        <OperationsContainer>
+          <OperationsRow>
+            {OPERATIONS.map((op) => (
+              <DraggableOperation
+                key={op}
+                draggable
+                onDragStart={(e) => handleDragStart(e, op, 'operation')}
+                onClick={() => handleClick(op, 'operation')}
+              >
+                {op}
+              </DraggableOperation>
             ))}
-          </CalculationLinesContainer>
-
-          {showSuccess && (
-            <SuccessMessage>🎉 Success! You've reached the target! 🎉</SuccessMessage>
-          )}
-
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
-            <Button onClick={generateRandomNumbers}>New Game</Button>
-            <Button onClick={findSolution} style={{ backgroundColor: '#4CAF50' }}>Find Solution</Button>
-          </div>
-        </GameContainer>
-      )}
+          </OperationsRow>
+        </OperationsContainer>
+        <CalculationLinesContainer>
+          {calculationLines.map((line, lineIndex) => (
+            <CalculationLine key={lineIndex}>
+              <DropTarget
+                isUsed={line.n1 !== null}
+                isAnimating={line.isAnimating}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(lineIndex, 'n1', e.dataTransfer.getData('text/plain'))}
+                onClick={() => handleCellClick(lineIndex, 'n1')}
+              >
+                {line.n1?.value !== undefined ? formatNumber(line.n1.value) : null}
+              </DropTarget>
+              <OperationDropTarget
+                isUsed={line.op !== null}
+                isAnimating={line.isAnimating}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(lineIndex, 'op', e.dataTransfer.getData('text/plain'))}
+                onClick={() => handleCellClick(lineIndex, 'op')}
+              >
+                {line.op}
+              </OperationDropTarget>
+              <DropTarget
+                isUsed={line.n2 !== null}
+                isAnimating={line.isAnimating}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(lineIndex, 'n2', e.dataTransfer.getData('text/plain'))}
+                onClick={() => handleCellClick(lineIndex, 'n2')}
+              >
+                {line.n2?.value !== undefined ? formatNumber(line.n2.value) : null}
+              </DropTarget>
+              <EqualsSign>=</EqualsSign>
+              <ResultDisplay
+                isUsed={line.result !== null}
+                isResultUsed={line.result !== null && isResultUsed(lineIndex)}
+                isAnimating={line.isAnimating}
+                isLastLine={lineIndex === 4}
+                color={line.result === target ? '#4CAF50' : '#333'}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(lineIndex, 'n1', e.dataTransfer.getData('text/plain'))}
+                onClick={() => {
+                  if (line.result !== null && !isResultUsed(lineIndex)) {
+                    const nextPos = findNextAvailablePosition('number')
+                    if (nextPos) {
+                      handleClick(line.result, 'result', lineIndex)
+                    }
+                  }
+                }}
+                draggable={line.result !== null && !isResultUsed(lineIndex)}
+                onDragStart={(e) => line.result !== null && !isResultUsed(lineIndex) && handleDragStart(e, line.result, 'result', lineIndex)}
+              >
+                {line.result !== null ? formatNumber(line.result) : null}
+              </ResultDisplay>
+            </CalculationLine>
+          ))}
+        </CalculationLinesContainer>
+        {showSuccess && <SuccessMessage>Success! You reached the target number!</SuccessMessage>}
+        <ButtonContainer>
+          <Button onClick={generateRandomNumbers}>New Game</Button>
+          <Button onClick={findSolution}>Find Solution</Button>
+        </ButtonContainer>
+      </GameContainer>
     </Container>
   )
 }
