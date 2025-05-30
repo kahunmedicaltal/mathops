@@ -16,6 +16,8 @@ const Container = styled.div`
 const Title = styled.h1`
   color: #333;
   margin-bottom: 2rem;
+  font-size: 1.2rem;
+  font-weight: normal;
 `
 
 const Button = styled.button`
@@ -207,6 +209,7 @@ const DraggableOperation = styled(DraggableNumber)`
   color: white;
   min-width: 50px;
   text-align: center;
+  padding: 0.8rem 1rem;
 `
 
 type NumberOrigin = 
