@@ -234,7 +234,6 @@ interface SolutionStep {
   result: number;
 }
 
-type Position = 'n1' | 'n2' | 'op' | 'result'
 type DropPosition = 'n1' | 'n2' | 'op'
 
 const ButtonContainer = styled.div`
