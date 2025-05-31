@@ -20,23 +20,48 @@ const Title = styled.h1`
   font-weight: normal;
 `
 
-const Button = styled.button`
-  background-color: #646cff;
+const Button = styled.button<{ isPressed?: boolean }>`
+  background-color: ${props => props.isPressed ? '#3a3f9e' : '#646cff'};
   color: white;
   border: none;
   padding: 0.8rem 1.5rem;
   border-radius: 8px;
   font-size: 1.1rem;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.05s ease;
+  position: relative;
+  top: ${props => props.isPressed ? '2px' : '0'};
+  box-shadow: ${props => props.isPressed 
+    ? '0 1px 2px rgba(0, 0, 0, 0.2)' 
+    : '0 4px 6px rgba(0, 0, 0, 0.1)'};
+
+  &:active {
+    background-color: #3a3f9e;
+    top: 2px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
 
   &:hover {
-    background-color: #535bf2;
+    background-color: ${props => props.isPressed ? '#3a3f9e' : '#535bf2'};
   }
 
   &:disabled {
     background-color: #cccccc;
     cursor: not-allowed;
+    top: 0;
+    box-shadow: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 8px;
+    background-color: ${props => props.isPressed ? 'rgba(0, 0, 0, 0.1)' : 'transparent'};
+    pointer-events: none;
   }
 `
 
@@ -243,7 +268,7 @@ const ButtonContainer = styled.div`
   display: flex;
   gap: 1rem;
   justify-content: center;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
 `
 
 // Simplify formatNumber to only take the number value
@@ -299,6 +324,11 @@ function App() {
     Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false })
   )
   const [showSuccess, setShowSuccess] = useState(false)
+  const [isNewGamePressed, setIsNewGamePressed] = useState(false)
+  const [isHintPressed, setIsHintPressed] = useState(false)
+  const [isFindSolutionPressed, setIsFindSolutionPressed] = useState(false)
+  const [storedSolution, setStoredSolution] = useState<SolutionStep[] | null>(null)
+  const [hintLineIndex, setHintLineIndex] = useState<number>(-1)  // -1 means no hints shown yet
 
   useEffect(() => {
     generateRandomNumbers()
@@ -546,15 +576,29 @@ function App() {
     // Helper function to calculate result of an operation
     const calculateResult = (n1: number, op: string, n2: number): number | null => {
       try {
-        const exprString = `${n1} ${op === ':' ? '/' : op} ${n2}`
-        const result = new Function(`return ${exprString}`)()
-        // Only allow integer results
-        if (Number.isInteger(result) && result > 0) {
-          return result
+        let result: number;
+        
+        if (op === '+') {
+          result = n1 + n2;
+        } else if (op === '-') {
+          result = n1 - n2;
+        } else if (op === '*') {
+          result = n1 * n2;
+        } else if (op === ':') {
+          // Check for division by zero
+          if (n2 === 0) return null;
+          result = n1 / n2;
+        } else {
+          return null;  // Invalid operation
         }
-        return null
+
+        // Only allow positive integer results
+        if (Number.isInteger(result) && result > 0) {
+          return result;
+        }
+        return null;
       } catch {
-        return null
+        return null;
       }
     }
 
@@ -694,6 +738,175 @@ function App() {
     }
   }
 
+  const handleNewGame = async () => {
+    setIsNewGamePressed(true)
+    await new Promise(resolve => setTimeout(resolve, 0))  // Ensure state update
+    generateRandomNumbers()
+    setStoredSolution(null)
+    setHintLineIndex(-1)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setIsNewGamePressed(false)
+  }
+
+  const findHint = async () => {
+    setIsHintPressed(true)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    // If we already have a solution and haven't shown all lines
+    if (storedSolution && hintLineIndex < 4) {
+      // Show the next line
+      const nextLineIndex = hintLineIndex + 1
+      const step = storedSolution[nextLineIndex]
+      const newLines = [...calculationLines]
+      newLines[nextLineIndex] = {
+        n1: { value: step.n1, origin: { type: 'generated' } },
+        op: step.op,
+        n2: { value: step.n2, origin: { type: 'generated' } },
+        result: step.result,
+        isComplete: true,
+        isAnimating: false
+      }
+      setCalculationLines(newLines)
+      setHintLineIndex(nextLineIndex)
+      
+      // If we've shown all lines, show success message
+      if (nextLineIndex === 4) {
+        setShowSuccess(true)
+      }
+    } else {
+      // Find a new solution
+      const calculateResult = (n1: number, op: string, n2: number): number | null => {
+        try {
+          let result: number;
+          
+          if (op === '+') {
+            result = n1 + n2;
+          } else if (op === '-') {
+            result = n1 - n2;
+          } else if (op === '*') {
+            result = n1 * n2;
+          } else if (op === ':') {
+            if (n2 === 0) return null;
+            result = n1 / n2;
+          } else {
+            return null;
+          }
+
+          if (Number.isInteger(result) && result > 0) {
+            return result;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
+      const findSolutionRecursive = (
+        currentLine: number,
+        usedIndices: Set<number>,
+        availableResults: Map<number, number[]>,
+        steps: SolutionStep[]
+      ): SolutionStep[] | null => {
+        if (currentLine === 5) {
+          return steps[4].result === target ? steps : null;
+        }
+
+        for (let i = 0; i < numbers.length; i++) {
+          if (usedIndices.has(i)) continue;
+          const n1 = numbers[i];
+          usedIndices.add(i);
+
+          for (const [prevResult, lineIndices] of availableResults.entries()) {
+            if (lineIndices.length > 0) {
+              const newUsedIndices = new Set(usedIndices);
+              newUsedIndices.delete(i);
+              const newAvailableResults = new Map(availableResults);
+              newAvailableResults.set(prevResult, lineIndices.slice(1));
+
+              for (const op of OPERATIONS) {
+                for (let j = 0; j < numbers.length; j++) {
+                  if (newUsedIndices.has(j)) continue;
+                  const n2 = numbers[j];
+                  newUsedIndices.add(j);
+
+                  const calcResult = calculateResult(prevResult, op, n2);
+                  if (calcResult !== null) {
+                    const newSteps = [...steps, { n1: prevResult, op, n2, result: calcResult }];
+                    const newAvailableResults2 = new Map(newAvailableResults);
+                    const resultLines = newAvailableResults2.get(calcResult) || [];
+                    newAvailableResults2.set(calcResult, [...resultLines, currentLine]);
+
+                    const solution = findSolutionRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps);
+                    if (solution) return solution;
+                  }
+                  newUsedIndices.delete(j);
+                }
+              }
+            }
+          }
+
+          for (let j = 0; j < numbers.length; j++) {
+            if (usedIndices.has(j)) continue;
+            const n2 = numbers[j];
+            usedIndices.add(j);
+
+            for (const op of OPERATIONS) {
+              const calcResult = calculateResult(n1, op, n2);
+              if (calcResult !== null) {
+                const newSteps = [...steps, { n1, op, n2, result: calcResult }];
+                const newAvailableResults = new Map(availableResults);
+                const resultLines = newAvailableResults.get(calcResult) || [];
+                newAvailableResults.set(calcResult, [...resultLines, currentLine]);
+
+                const solution = findSolutionRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps);
+                if (solution) return solution;
+              }
+            }
+            usedIndices.delete(j);
+          }
+          usedIndices.delete(i);
+        }
+        return null;
+      }
+
+      // Find a complete solution
+      const solution = findSolutionRecursive(0, new Set(), new Map(), []);
+      
+      if (solution) {
+        // Store the solution and show first line
+        setStoredSolution(solution);
+        setHintLineIndex(0);
+        const firstStep = solution[0];
+        const newLines = [...calculationLines];
+        newLines[0] = {
+          n1: { value: firstStep.n1, origin: { type: 'generated' } },
+          op: firstStep.op,
+          n2: { value: firstStep.n2, origin: { type: 'generated' } },
+          result: firstStep.result,
+          isComplete: true,
+          isAnimating: false
+        };
+        setCalculationLines(newLines);
+      } else {
+        alert('No solution found! Try different numbers.');
+        setStoredSolution(null);
+        setHintLineIndex(-1);
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setIsHintPressed(false);
+  }
+
+  const handleFindSolution = async () => {
+    setIsFindSolutionPressed(true)
+    await new Promise(resolve => setTimeout(resolve, 0))  // Ensure state update
+    findSolution()
+    // Keep pressed state for a bit longer to show the effect
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setIsFindSolutionPressed(false)
+  }
+
   return (
     <Container>
       <Title>Reach the target using all 6 numbers</Title>
@@ -786,8 +999,9 @@ function App() {
         </CalculationLinesContainer>
         {showSuccess && <SuccessMessage>Success! You reached the target number!</SuccessMessage>}
         <ButtonContainer>
-          <Button onClick={generateRandomNumbers}>New Game</Button>
-          <Button onClick={findSolution}>Find Solution</Button>
+          <Button onClick={handleNewGame} isPressed={isNewGamePressed}>New</Button>
+          <Button onClick={findHint} isPressed={isHintPressed}>Hint</Button>
+          <Button onClick={handleFindSolution} isPressed={isFindSolutionPressed}>Find Solution</Button>
         </ButtonContainer>
       </GameContainer>
     </Container>
