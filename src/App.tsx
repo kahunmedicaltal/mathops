@@ -334,15 +334,135 @@ function App() {
     generateRandomNumbers()
   }, [])
 
+  const findSolutionExists = (numbersToCheck: number[], targetToCheck: number): boolean => {
+    // Helper function to calculate result of an operation
+    const calculateResult = (n1: number, op: string, n2: number): number | null => {
+      try {
+        let result: number;
+        
+        if (op === '+') {
+          result = n1 + n2;
+        } else if (op === '-') {
+          result = n1 - n2;
+        } else if (op === '*') {
+          result = n1 * n2;
+        } else if (op === ':') {
+          if (n2 === 0) return null;
+          result = n1 / n2;
+        } else {
+          return null;
+        }
+
+        if (Number.isInteger(result) && result > 0) {
+          return result;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Recursive function to find a solution
+    const findSolutionRecursive = (
+      currentLine: number,
+      usedIndices: Set<number>,
+      availableResults: Map<number, number[]>,
+      steps: SolutionStep[]
+    ): boolean => {
+      if (currentLine === 5) {
+        return steps[4].result === targetToCheck;
+      }
+
+      for (let i = 0; i < numbersToCheck.length; i++) {
+        if (usedIndices.has(i)) continue;
+        const n1 = numbersToCheck[i];
+        usedIndices.add(i);
+
+        for (const [prevResult, lineIndices] of availableResults.entries()) {
+          if (lineIndices.length > 0) {
+            const newUsedIndices = new Set(usedIndices);
+            newUsedIndices.delete(i);
+            const newAvailableResults = new Map(availableResults);
+            newAvailableResults.set(prevResult, lineIndices.slice(1));
+
+            for (const op of OPERATIONS) {
+              for (let j = 0; j < numbersToCheck.length; j++) {
+                if (newUsedIndices.has(j)) continue;
+                const n2 = numbersToCheck[j];
+                newUsedIndices.add(j);
+
+                const calcResult = calculateResult(prevResult, op, n2);
+                if (calcResult !== null) {
+                  const newSteps = [...steps, { n1: prevResult, op, n2, result: calcResult }];
+                  const newAvailableResults2 = new Map(newAvailableResults);
+                  const resultLines = newAvailableResults2.get(calcResult) || [];
+                  newAvailableResults2.set(calcResult, [...resultLines, currentLine]);
+
+                  if (findSolutionRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps)) {
+                    return true;
+                  }
+                }
+                newUsedIndices.delete(j);
+              }
+            }
+          }
+        }
+
+        for (let j = 0; j < numbersToCheck.length; j++) {
+          if (usedIndices.has(j)) continue;
+          const n2 = numbersToCheck[j];
+          usedIndices.add(j);
+
+          for (const op of OPERATIONS) {
+            const calcResult = calculateResult(n1, op, n2);
+            if (calcResult !== null) {
+              const newSteps = [...steps, { n1, op, n2, result: calcResult }];
+              const newAvailableResults = new Map(availableResults);
+              const resultLines = newAvailableResults.get(calcResult) || [];
+              newAvailableResults.set(calcResult, [...resultLines, currentLine]);
+
+              if (findSolutionRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps)) {
+                return true;
+              }
+            }
+          }
+          usedIndices.delete(j);
+        }
+        usedIndices.delete(i);
+      }
+      return false;
+    }
+
+    return findSolutionRecursive(0, new Set(), new Map(), []);
+  }
+
   const generateRandomNumbers = () => {
-    const shuffled = [...AVAILABLE_NUMBERS].sort(() => Math.random() - 0.5)
-    const selectedNumbers = shuffled.slice(0, 6)
-    const randomTarget = Math.floor(Math.random() * (1000 - 50) + 50)
+    let selectedNumbers: number[];
+    let randomTarget: number;
+    let hasSolution = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100;  // Prevent infinite loops
+
+    do {
+      const shuffled = [...AVAILABLE_NUMBERS].sort(() => Math.random() - 0.5);
+      selectedNumbers = shuffled.slice(0, 6);
+      randomTarget = Math.floor(Math.random() * (1000 - 50) + 50);
+      hasSolution = findSolutionExists(selectedNumbers, randomTarget);
+      attempts++;
+    } while (!hasSolution && attempts < MAX_ATTEMPTS);
+
+    if (!hasSolution) {
+      // If we couldn't find a solution after max attempts, use a known good set
+      selectedNumbers = [1, 2, 3, 4, 5, 6];
+      randomTarget = 100;
+    }
     
-    setNumbers(selectedNumbers)
-    setTarget(randomTarget)
-    setCalculationLines(Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }))
-    setShowSuccess(false)
+    setNumbers(selectedNumbers);
+    setTarget(randomTarget);
+    setCalculationLines(Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }));
+    setShowSuccess(false);
+    setStoredSolution(null);
+    setHintLineIndex(-1);
   }
 
   // Calculate used numbers from calculationLines
