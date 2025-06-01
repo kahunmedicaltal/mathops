@@ -331,25 +331,57 @@ const ButtonContainer = styled.div`
   margin-top: 1.5rem;
 `
 
-// Simplify formatNumber to only take the number value
-const formatNumber = (value: number): string => {
-  // If it's a whole number, return it as is
-  if (Number.isInteger(value)) {
-    return value.toString()
-  }
+// Add this styled component near the other styled components
+const Fraction = styled.div`
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  font-size: 0.9em;
+  vertical-align: middle;
+  margin: 0 0.1em;
+`
 
-  // If it has 2 or fewer decimal places, return the decimal
-  const decimalStr = value.toString()
-  const decimalPlaces = decimalStr.includes('.') ? decimalStr.split('.')[1].length : 0
-  if (decimalPlaces <= 2) {
-    return decimalStr
-  }
+const FractionLine = styled.div`
+  width: 100%;
+  height: 1px;
+  background-color: currentColor;
+  margin: 0.1em 0;
+`
 
-  // For numbers with more than 2 decimal places, convert to fraction
+const FractionTop = styled.div`
+  padding-bottom: 0.1em;
+`
+
+const FractionBottom = styled.div`
+  padding-top: 0.1em;
+`
+
+// Common fractions mapping
+const COMMON_FRACTIONS: { [key: string]: string } = {
+  '1/2': '½',
+  '1/3': '⅓',
+  '2/3': '⅔',
+  '1/4': '¼',
+  '3/4': '¾',
+  '1/5': '⅕',
+  '2/5': '⅖',
+  '3/5': '⅗',
+  '4/5': '⅘',
+  '1/6': '⅙',
+  '5/6': '⅚',
+  '1/8': '⅛',
+  '3/8': '⅜',
+  '5/8': '⅝',
+  '7/8': '⅞'
+}
+
+// Convert decimal to fraction
+const decimalToFraction = (decimal: number): { numerator: number; denominator: number } => {
   const tolerance = 1.0E-6
   let h1 = 1, h2 = 0
   let k1 = 0, k2 = 1
-  let b = value
+  let b = decimal
   do {
     const a = Math.floor(b)
     let aux = h1
@@ -359,22 +391,69 @@ const formatNumber = (value: number): string => {
     k1 = a * k1 + k2
     k2 = aux
     b = 1 / (b - a)
-  } while (Math.abs(value - h1 / k1) > value * tolerance)
+  } while (Math.abs(decimal - h1 / k1) > decimal * tolerance)
 
   // Simplify the fraction
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
   const divisor = gcd(Math.abs(h1), Math.abs(k1))
-  h1 = h1 / divisor
-  k1 = k1 / divisor
+  return {
+    numerator: h1 / divisor,
+    denominator: k1 / divisor
+  }
+}
+
+// Simplify formatNumber to only take the number value
+const formatNumber = (value: number): string => {
+  // If it's a whole number, return it as is
+  if (Number.isInteger(value)) {
+    return value.toString()
+  }
+
+  // Convert to fraction
+  const { numerator, denominator } = decimalToFraction(value)
 
   // Format the fraction
-  if (k1 === 1) return h1.toString()
-  if (h1 > k1) {
-    const whole = Math.floor(h1 / k1)
-    const remainder = h1 % k1
-    return remainder === 0 ? whole.toString() : `${whole} ${remainder}/${k1}`
+  if (denominator === 1) return numerator.toString()
+  
+  // Check if it's a common fraction
+  const fractionKey = `${numerator}/${denominator}`
+  if (COMMON_FRACTIONS[fractionKey]) {
+    return COMMON_FRACTIONS[fractionKey]
   }
-  return `${h1}/${k1}`
+
+  // For mixed numbers (whole number + fraction)
+  if (numerator > denominator) {
+    const whole = Math.floor(numerator / denominator)
+    const remainder = numerator % denominator
+    if (remainder === 0) return whole.toString()
+    
+    // Check if the fractional part is a common fraction
+    const remainderFractionKey = `${remainder}/${denominator}`
+    if (COMMON_FRACTIONS[remainderFractionKey]) {
+      return `${whole} ${COMMON_FRACTIONS[remainderFractionKey]}`
+    }
+    
+    // Use styled fraction for mixed numbers
+    return (
+      <span>
+        {whole}{' '}
+        <Fraction>
+          <FractionTop>{remainder}</FractionTop>
+          <FractionLine />
+          <FractionBottom>{denominator}</FractionBottom>
+        </Fraction>
+      </span>
+    ) as unknown as string
+  }
+  
+  // Use styled fraction for simple fractions
+  return (
+    <Fraction>
+      <FractionTop>{numerator}</FractionTop>
+      <FractionLine />
+      <FractionBottom>{denominator}</FractionBottom>
+    </Fraction>
+  ) as unknown as string
 }
 
 const LevelSelector = styled.div`
