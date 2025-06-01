@@ -3,8 +3,68 @@ import type { DragEvent } from 'react'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 
-const AVAILABLE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
-const OPERATIONS = ['+', '-', '*', ':']
+type GameLevel = 0 | 1 | 2 | 3 | 4
+
+const LEVEL_NAMES = {
+  0: 'Beginner',
+  1: 'Intermediate',
+  2: 'Proficient',
+  3: 'Expert',
+  4: 'Master'
+} as const;
+
+// Base available numbers - will be filtered based on level
+const ALL_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
+
+type LevelParams = {
+  poolSize: number;
+  availableNumbers: number[];
+  targetRange: { min: number; max: number };
+  operations: string[];
+  requireNonInteger?: boolean;
+}
+
+// Get level-specific parameters
+const getLevelParams = (level: GameLevel): LevelParams => {
+  switch (level) {
+    case 0:
+      return {
+        poolSize: 3,
+        availableNumbers: ALL_NUMBERS.filter(n => n <= 5),
+        targetRange: { min: 1, max: 10 },
+        operations: ['+', '-']
+      }
+    case 1:
+      return {
+        poolSize: 3,
+        availableNumbers: ALL_NUMBERS.filter(n => n <= 5),
+        targetRange: { min: 1, max: 10 },
+        operations: ['+', '-', '*']
+      }
+    case 2:
+      return {
+        poolSize: 4,
+        availableNumbers: ALL_NUMBERS.filter(n => n <= 10),
+        targetRange: { min: 1, max: 20 },
+        operations: ['+', '-', '*', ':']
+      }
+    case 3:
+      return {
+        poolSize: 6,
+        availableNumbers: ALL_NUMBERS,
+        targetRange: { min: 1, max: 1000 },
+        operations: ['+', '-', '*', ':']
+      }
+    case 4:
+      return {
+        poolSize: 4,
+        availableNumbers: ALL_NUMBERS.filter(n => n <= 10),
+        targetRange: { min: 1, max: 50 },
+        operations: ['+', '-', '*', ':'],
+        requireNonInteger: true
+      }
+  }
+}
 
 const Container = styled.div`
   max-width: 800px;
@@ -317,11 +377,56 @@ const formatNumber = (value: number): string => {
   return `${h1}/${k1}`
 }
 
+const LevelSelector = styled.div`
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+`
+
+const LevelLabel = styled.label`
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+`
+
+const LevelButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+`
+
+const LevelButton = styled.button<{ isSelected: boolean }>`
+  background-color: ${props => props.isSelected ? '#3a3f9e' : '#646cff'};
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: ${props => props.isSelected ? 1 : 0.8};
+
+  &:hover {
+    background-color: ${props => props.isSelected ? '#3a3f9e' : '#535bf2'};
+    opacity: 1;
+  }
+`
+
 function App() {
+  const [level, setLevel] = useState<GameLevel>(0)
+  // Get level parameters based on current level
+  const levelParams = getLevelParams(level)
+  const POOL_SIZE = levelParams.poolSize
+  const AVAILABLE_NUMBERS = levelParams.availableNumbers
+  const OPERATIONS = levelParams.operations
+
   const [numbers, setNumbers] = useState<number[]>([])
   const [target, setTarget] = useState<number>(0)
   const [calculationLines, setCalculationLines] = useState<CalculationLine[]>(
-    Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false })
+    Array(POOL_SIZE - 1).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false })
   )
   const [showSuccess, setShowSuccess] = useState(false)
   const [isNewGamePressed, setIsNewGamePressed] = useState(false)
@@ -332,52 +437,79 @@ function App() {
 
   useEffect(() => {
     generateRandomNumbers()
-  }, [])
+  }, [level]) // Regenerate numbers when level changes
 
-  const findSolutionExists = (numbersToCheck: number[], targetToCheck: number): boolean => {
-    // Helper function to calculate result of an operation
-    const calculateResult = (n1: number, op: string, n2: number): number | null => {
-      try {
-        let result: number;
-        
-        if (op === '+') {
-          result = n1 + n2;
-        } else if (op === '-') {
-          result = n1 - n2;
-        } else if (op === '*') {
-          result = n1 * n2;
-        } else if (op === ':') {
-          if (n2 === 0) return null;
-          result = n1 / n2;
-        } else {
-          return null;
-        }
+  const handleLevelChange = (newLevel: GameLevel) => {
+    setLevel(newLevel)
+    setShowSuccess(false)
+    setStoredSolution(null)
+    setHintLineIndex(-1)
+  }
 
-        if (Number.isInteger(result) && result > 0) {
-          return result;
-        }
-        return null;
-      } catch {
+  // Helper function to calculate result of an operation
+  const calculateResult = (n1: number, op: string, n2: number): number | null => {
+    try {
+      let result: number;
+      
+      if (op === '+') {
+        result = n1 + n2;
+      } else if (op === '-') {
+        result = n1 - n2;
+      } else if (op === '*') {
+        result = n1 * n2;
+      } else if (op === ':') {
+        if (n2 === 0) return null;
+        result = n1 / n2;
+      } else {
         return null;
       }
-    }
 
-    // Recursive function to find a solution
-    const findSolutionRecursive = (
+      return result > 0 ? result : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Find all possible solutions for a given set of numbers and target
+  const findAllSolutions = (
+    numbersToCheck: number[], 
+    targetToCheck: number,
+    params: LevelParams,
+    capSolutions?: number  // Optional cap on number of solutions to find
+  ): SolutionStep[][] => {
+    const solutions: SolutionStep[][] = [];
+    const maxSolutions = capSolutions ?? Infinity;
+
+    const findSolutionsRecursive = (
       currentLine: number,
       usedIndices: Set<number>,
       availableResults: Map<number, number[]>,
       steps: SolutionStep[]
-    ): boolean => {
-      if (currentLine === 5) {
-        return steps[4].result === targetToCheck;
+    ) => {
+      // If we've found enough solutions, stop searching
+      if (solutions.length >= maxSolutions) {
+        return;
       }
 
+      if (currentLine === params.poolSize - 1) {
+        // Use approximate equality for floating point comparison
+        if (Math.abs(steps[params.poolSize - 2].result - targetToCheck) < 0.0001) {
+          solutions.push([...steps]);
+          // If we've found enough solutions, stop searching
+          if (solutions.length >= maxSolutions) {
+            return;
+          }
+        }
+        return;
+      }
+
+      // Try each available number as n1
       for (let i = 0; i < numbersToCheck.length; i++) {
         if (usedIndices.has(i)) continue;
         const n1 = numbersToCheck[i];
         usedIndices.add(i);
 
+        // Try using a result from previous lines as n1
         for (const [prevResult, lineIndices] of availableResults.entries()) {
           if (lineIndices.length > 0) {
             const newUsedIndices = new Set(usedIndices);
@@ -385,7 +517,12 @@ function App() {
             const newAvailableResults = new Map(availableResults);
             newAvailableResults.set(prevResult, lineIndices.slice(1));
 
-            for (const op of OPERATIONS) {
+            for (const op of params.operations) {
+              // If we've found enough solutions, stop searching
+              if (solutions.length >= maxSolutions) {
+                return;
+              }
+
               for (let j = 0; j < numbersToCheck.length; j++) {
                 if (newUsedIndices.has(j)) continue;
                 const n2 = numbersToCheck[j];
@@ -398,8 +535,10 @@ function App() {
                   const resultLines = newAvailableResults2.get(calcResult) || [];
                   newAvailableResults2.set(calcResult, [...resultLines, currentLine]);
 
-                  if (findSolutionRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps)) {
-                    return true;
+                  findSolutionsRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps);
+                  // If we've found enough solutions, stop searching
+                  if (solutions.length >= maxSolutions) {
+                    return;
                   }
                 }
                 newUsedIndices.delete(j);
@@ -408,12 +547,18 @@ function App() {
           }
         }
 
+        // Try using another number from the pool as n1
         for (let j = 0; j < numbersToCheck.length; j++) {
           if (usedIndices.has(j)) continue;
           const n2 = numbersToCheck[j];
           usedIndices.add(j);
 
-          for (const op of OPERATIONS) {
+          for (const op of params.operations) {
+            // If we've found enough solutions, stop searching
+            if (solutions.length >= maxSolutions) {
+              return;
+            }
+
             const calcResult = calculateResult(n1, op, n2);
             if (calcResult !== null) {
               const newSteps = [...steps, { n1, op, n2, result: calcResult }];
@@ -421,8 +566,10 @@ function App() {
               const resultLines = newAvailableResults.get(calcResult) || [];
               newAvailableResults.set(calcResult, [...resultLines, currentLine]);
 
-              if (findSolutionRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps)) {
-                return true;
+              findSolutionsRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps);
+              // If we've found enough solutions, stop searching
+              if (solutions.length >= maxSolutions) {
+                return;
               }
             }
           }
@@ -430,10 +577,76 @@ function App() {
         }
         usedIndices.delete(i);
       }
-      return false;
     }
 
-    return findSolutionRecursive(0, new Set(), new Map(), []);
+    findSolutionsRecursive(0, new Set(), new Map(), []);
+    return solutions;
+  }
+
+  // Helper function to check if a number is effectively an integer using epsilon
+  const isEffectivelyInteger = (num: number): boolean => {
+    const EPS = 0.0001;
+    return Math.abs(Math.round(num) - num) < EPS;
+  }
+
+  // Find solutions based on level requirements
+  const findSolutionsByLevel = (
+    numbersToCheck: number[],
+    targetToCheck: number,
+    params: LevelParams,
+    currentLevel: GameLevel
+  ): SolutionStep[][] => {
+    // For existence checks, we only need to find one solution
+    const allSolutions = findAllSolutions(numbersToCheck, targetToCheck, params, 1);
+    
+    // If no solutions exist at all, return empty array
+    if (allSolutions.length === 0) {
+      console.log('No solutions found for numbers:', numbersToCheck, 'target:', targetToCheck);
+      return [];
+    }
+
+    // If we're just checking existence, we can return now
+    if (currentLevel !== 2 && currentLevel !== 4) {
+      console.log('Level', currentLevel, ': Found solution');
+      return allSolutions;
+    }
+
+    // For levels 2 and 4, we need to check all solutions
+    const allSolutionsFull = findAllSolutions(numbersToCheck, targetToCheck, params);
+
+    if (currentLevel === 2) {
+      // For level 2, we need to check ALL solutions to ensure at least one has all integer results
+      const hasIntegerSolution = allSolutionsFull.some(solution => 
+        solution.every(step => isEffectivelyInteger(step.result))
+      );
+      if (!hasIntegerSolution) {
+        console.log('Level 2: No solution found with all integer results');
+        return [];
+      }
+      console.log('Level 2: Found solution with all integer results');
+      return allSolutionsFull;
+    } else {  // level 4
+      // For level 4, we need to check ALL solutions to ensure they ALL have at least one non-integer step
+      const allHaveNonInteger = allSolutionsFull.every(solution => 
+        solution.some(step => !isEffectivelyInteger(step.result))
+      );
+      if (!allHaveNonInteger) {
+        console.log('Level 4: Found solution with all integer results, which is not allowed');
+        return [];
+      }
+      console.log('Level 4: All solutions have at least one non-integer step');
+      return allSolutionsFull;
+    }
+  }
+
+  const findSolutionExists = (
+    numbersToCheck: number[], 
+    targetToCheck: number,
+    params: LevelParams
+  ): boolean => {
+    // Only need to find one solution to know if it exists
+    const solutions = findSolutionsByLevel(numbersToCheck, targetToCheck, params, level);
+    return solutions.length > 0;
   }
 
   const generateRandomNumbers = () => {
@@ -441,25 +654,53 @@ function App() {
     let randomTarget: number;
     let hasSolution = false;
     let attempts = 0;
-    const MAX_ATTEMPTS = 100;  // Prevent infinite loops
+    const MAX_ATTEMPTS = 1000;  // Increased from 100 to 1000
 
     do {
       const shuffled = [...AVAILABLE_NUMBERS].sort(() => Math.random() - 0.5);
-      selectedNumbers = shuffled.slice(0, 6);
-      randomTarget = Math.floor(Math.random() * (1000 - 50) + 50);
-      hasSolution = findSolutionExists(selectedNumbers, randomTarget);
+      selectedNumbers = shuffled.slice(0, POOL_SIZE);
+      randomTarget = Math.floor(Math.random() * (levelParams.targetRange.max - levelParams.targetRange.min + 1)) + levelParams.targetRange.min;
+      
+      console.log('Trying numbers:', selectedNumbers, 'target:', randomTarget, 'level:', level);
+      // Check if there's a valid solution for this level
+      hasSolution = findSolutionExists(selectedNumbers, randomTarget, levelParams);
+      console.log('Has solution:', hasSolution);
+      
       attempts++;
     } while (!hasSolution && attempts < MAX_ATTEMPTS);
 
     if (!hasSolution) {
-      // If we couldn't find a solution after max attempts, use a known good set
-      selectedNumbers = [1, 2, 3, 4, 5, 6];
-      randomTarget = 100;
+      console.log('Failed to find valid solution after', attempts, 'attempts, using fallback');
+      // If we couldn't find a solution after max attempts, use a known good set for the level
+      switch (level) {
+        case 0:
+          selectedNumbers = [1, 2, 3];
+          randomTarget = 4;
+          break;
+        case 1:
+          selectedNumbers = [1, 2, 3];
+          randomTarget = 5;
+          break;
+        case 2:
+          // Known good set for level 2 with all integer results
+          selectedNumbers = [2, 3, 4, 5];
+          randomTarget = 15;  // Example: 2 * 3 + 4 + 5 = 15
+          break;
+        case 3:
+          selectedNumbers = [1, 2, 3, 4, 5, 6];
+          randomTarget = 100;
+          break;
+        case 4:
+          // Known good set for level 4 that requires non-integer steps
+          selectedNumbers = [2, 3, 4, 5];
+          randomTarget = 25;  // This should have solutions that require non-integer steps
+          break;
+      }
     }
     
     setNumbers(selectedNumbers);
     setTarget(randomTarget);
-    setCalculationLines(Array(5).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }));
+    setCalculationLines(Array(POOL_SIZE - 1).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }));
     setShowSuccess(false);
     setStoredSolution(null);
     setHintLineIndex(-1);
@@ -615,7 +856,7 @@ function App() {
       setCalculationLines(newLines)
 
       // Check if this is the last line and if it matches the target
-      if (lineIndex === 4 && result === target) {
+      if (lineIndex === POOL_SIZE - 2 && result === target) {
         setShowSuccess(true)
       } else {
         setShowSuccess(false)
@@ -693,113 +934,11 @@ function App() {
   }
 
   const findSolution = () => {
-    // Helper function to calculate result of an operation
-    const calculateResult = (n1: number, op: string, n2: number): number | null => {
-      try {
-        let result: number;
-        
-        if (op === '+') {
-          result = n1 + n2;
-        } else if (op === '-') {
-          result = n1 - n2;
-        } else if (op === '*') {
-          result = n1 * n2;
-        } else if (op === ':') {
-          // Check for division by zero
-          if (n2 === 0) return null;
-          result = n1 / n2;
-        } else {
-          return null;  // Invalid operation
-        }
+    const solutions = findSolutionsByLevel(numbers, target, levelParams, level);
 
-        // Only allow positive integer results
-        if (Number.isInteger(result) && result > 0) {
-          return result;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    }
-
-    // Recursive function to find a solution
-    const findSolutionRecursive = (
-      currentLine: number,
-      usedIndices: Set<number>,
-      availableResults: Map<number, number[]>, // Map of result value to line indices
-      steps: SolutionStep[]
-    ): SolutionStep[] | null => {
-      if (currentLine === 5) {
-        // Check if the last result matches the target
-        return steps[4].result === target ? steps : null
-      }
-
-      // Try all possible combinations of numbers and operations
-      for (let i = 0; i < numbers.length; i++) {
-        if (usedIndices.has(i)) continue
-        const n1 = numbers[i]
-        usedIndices.add(i)
-
-        // Try using a result from previous lines as n1
-        for (const [prevResult, lineIndices] of availableResults.entries()) {
-          if (lineIndices.length > 0) {
-            const newUsedIndices = new Set(usedIndices)
-            newUsedIndices.delete(i) // Remove the number we just added
-            const newAvailableResults = new Map(availableResults)
-            newAvailableResults.set(prevResult, lineIndices.slice(1)) // Remove one instance of this result
-
-            for (const op of OPERATIONS) {
-              // Try all numbers for n2
-              for (let j = 0; j < numbers.length; j++) {
-                if (newUsedIndices.has(j)) continue
-                const n2 = numbers[j]
-                newUsedIndices.add(j)
-
-                const calcResult = calculateResult(prevResult, op, n2)
-                if (calcResult !== null) {
-                  const newSteps = [...steps, { n1: prevResult, op, n2, result: calcResult }]
-                  const newAvailableResults2 = new Map(newAvailableResults)
-                  const resultLines = newAvailableResults2.get(calcResult) || []
-                  newAvailableResults2.set(calcResult, [...resultLines, currentLine])
-
-                  const solution = findSolutionRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps)
-                  if (solution) return solution
-                }
-                newUsedIndices.delete(j)
-              }
-            }
-          }
-        }
-
-        // Try using another number from the pool as n1
-        for (let j = 0; j < numbers.length; j++) {
-          if (usedIndices.has(j)) continue
-          const n2 = numbers[j]
-          usedIndices.add(j)
-
-          for (const op of OPERATIONS) {
-            const calcResult = calculateResult(n1, op, n2)
-            if (calcResult !== null) {
-              const newSteps = [...steps, { n1, op, n2, result: calcResult }]
-              const newAvailableResults = new Map(availableResults)
-              const resultLines = newAvailableResults.get(calcResult) || []
-              newAvailableResults.set(calcResult, [...resultLines, currentLine])
-
-              const solution = findSolutionRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps)
-              if (solution) return solution
-            }
-          }
-          usedIndices.delete(j)
-        }
-        usedIndices.delete(i)
-      }
-      return null
-    }
-
-    // Start the search
-    const solution = findSolutionRecursive(0, new Set(), new Map(), [])
-    if (solution) {
-      // Apply the solution to the game
+    if (solutions.length > 0) {
+      // Apply the first solution to the game
+      const solution = solutions[0];
       const newLines: CalculationLine[] = solution.map(step => ({
         n1: { value: step.n1, origin: { type: 'generated' as const } },
         op: step.op,
@@ -873,7 +1012,7 @@ function App() {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     // If we already have a solution and haven't shown all lines
-    if (storedSolution && hintLineIndex < 4) {
+    if (storedSolution && hintLineIndex < POOL_SIZE - 2) {
       // Show the next line
       const nextLineIndex = hintLineIndex + 1
       const step = storedSolution[nextLineIndex]
@@ -890,110 +1029,16 @@ function App() {
       setHintLineIndex(nextLineIndex)
       
       // If we've shown all lines, show success message
-      if (nextLineIndex === 4) {
+      if (nextLineIndex === POOL_SIZE - 2) {
         setShowSuccess(true)
       }
     } else {
       // Find a new solution
-      const calculateResult = (n1: number, op: string, n2: number): number | null => {
-        try {
-          let result: number;
-          
-          if (op === '+') {
-            result = n1 + n2;
-          } else if (op === '-') {
-            result = n1 - n2;
-          } else if (op === '*') {
-            result = n1 * n2;
-          } else if (op === ':') {
-            if (n2 === 0) return null;
-            result = n1 / n2;
-          } else {
-            return null;
-          }
-
-          if (Number.isInteger(result) && result > 0) {
-            return result;
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      }
-
-      const findSolutionRecursive = (
-        currentLine: number,
-        usedIndices: Set<number>,
-        availableResults: Map<number, number[]>,
-        steps: SolutionStep[]
-      ): SolutionStep[] | null => {
-        if (currentLine === 5) {
-          return steps[4].result === target ? steps : null;
-        }
-
-        for (let i = 0; i < numbers.length; i++) {
-          if (usedIndices.has(i)) continue;
-          const n1 = numbers[i];
-          usedIndices.add(i);
-
-          for (const [prevResult, lineIndices] of availableResults.entries()) {
-            if (lineIndices.length > 0) {
-              const newUsedIndices = new Set(usedIndices);
-              newUsedIndices.delete(i);
-              const newAvailableResults = new Map(availableResults);
-              newAvailableResults.set(prevResult, lineIndices.slice(1));
-
-              for (const op of OPERATIONS) {
-                for (let j = 0; j < numbers.length; j++) {
-                  if (newUsedIndices.has(j)) continue;
-                  const n2 = numbers[j];
-                  newUsedIndices.add(j);
-
-                  const calcResult = calculateResult(prevResult, op, n2);
-                  if (calcResult !== null) {
-                    const newSteps = [...steps, { n1: prevResult, op, n2, result: calcResult }];
-                    const newAvailableResults2 = new Map(newAvailableResults);
-                    const resultLines = newAvailableResults2.get(calcResult) || [];
-                    newAvailableResults2.set(calcResult, [...resultLines, currentLine]);
-
-                    const solution = findSolutionRecursive(currentLine + 1, newUsedIndices, newAvailableResults2, newSteps);
-                    if (solution) return solution;
-                  }
-                  newUsedIndices.delete(j);
-                }
-              }
-            }
-          }
-
-          for (let j = 0; j < numbers.length; j++) {
-            if (usedIndices.has(j)) continue;
-            const n2 = numbers[j];
-            usedIndices.add(j);
-
-            for (const op of OPERATIONS) {
-              const calcResult = calculateResult(n1, op, n2);
-              if (calcResult !== null) {
-                const newSteps = [...steps, { n1, op, n2, result: calcResult }];
-                const newAvailableResults = new Map(availableResults);
-                const resultLines = newAvailableResults.get(calcResult) || [];
-                newAvailableResults.set(calcResult, [...resultLines, currentLine]);
-
-                const solution = findSolutionRecursive(currentLine + 1, usedIndices, newAvailableResults, newSteps);
-                if (solution) return solution;
-              }
-            }
-            usedIndices.delete(j);
-          }
-          usedIndices.delete(i);
-        }
-        return null;
-      }
-
-      // Find a complete solution
-      const solution = findSolutionRecursive(0, new Set(), new Map(), []);
+      const solutions = findSolutionsByLevel(numbers, target, levelParams, level);
       
-      if (solution) {
+      if (solutions.length > 0) {
         // Store the solution and show first line
+        const solution = solutions[0];
         setStoredSolution(solution);
         setHintLineIndex(0);
         const firstStep = solution[0];
@@ -1029,7 +1074,21 @@ function App() {
 
   return (
     <Container>
-      <Title>Reach the target using all 6 numbers</Title>
+      <LevelSelector>
+        <LevelLabel>Select Difficulty Level:</LevelLabel>
+        <LevelButtons>
+          {(Object.entries(LEVEL_NAMES) as [string, string][]).map(([levelNum, name]) => (
+            <LevelButton
+              key={levelNum}
+              isSelected={level === Number(levelNum)}
+              onClick={() => handleLevelChange(Number(levelNum) as GameLevel)}
+            >
+              {name}
+            </LevelButton>
+          ))}
+        </LevelButtons>
+      </LevelSelector>
+      <Title>Reach the target using all {POOL_SIZE} numbers</Title>
       <GameContainer>
         <TargetNumber>Target: {target}</TargetNumber>
         <NumbersContainer>
@@ -1097,7 +1156,7 @@ function App() {
                 isUsed={line.result !== null}
                 isResultUsed={line.result !== null && isResultUsed(lineIndex)}
                 isAnimating={line.isAnimating}
-                isLastLine={lineIndex === 4}
+                isLastLine={lineIndex === POOL_SIZE - 2}
                 color={line.result === target ? '#4CAF50' : '#333'}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(lineIndex, 'n1', e.dataTransfer.getData('text/plain'))}
