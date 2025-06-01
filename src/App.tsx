@@ -57,7 +57,7 @@ const getLevelParams = (level: GameLevel): LevelParams => {
       }
     case 4:
       return {
-        poolSize: 5,
+        poolSize: 4,
         availableNumbers: ALL_NUMBERS.filter(n => n <= 10),
         targetRange: { min: 1, max: 50 },
         operations: ['+', '-', '*', ':'],
@@ -692,7 +692,7 @@ function App() {
           break;
         case 4:
           // Known good set for level 4 that requires non-integer steps
-          selectedNumbers = [2, 3, 4, 5, 6];  // Updated to 5 numbers
+          selectedNumbers = [2, 3, 4, 5];  // Changed back to 4 numbers
           randomTarget = 25;  // This should have solutions that require non-integer steps
           break;
       }
