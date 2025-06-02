@@ -530,11 +530,11 @@ const CelebrationItem = styled.div<{ delay: number; left: number; size: number }
 `
 
 const Balloon = styled(CelebrationItem)`
-  color: ${props => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
+  color: ${() => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
 `
 
 const Present = styled(CelebrationItem)`
-  color: ${props => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
+  color: ${() => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
 `
 
 function App() {
@@ -1196,7 +1196,7 @@ function App() {
 
   // Add this component
   const Celebration = () => {
-    const items = Array.from({ length: 20 }, (_, i) => ({
+    const items = Array.from({ length: 20 }, () => ({
       type: Math.random() > 0.5 ? '🎈' : '🎁',
       delay: Math.random() * 2,
       left: Math.random() * 100,
@@ -1206,7 +1206,7 @@ function App() {
     return (
       <CelebrationContainer>
         {items.map((item, index) => (
-          item.type === '��' ? (
+          item.type === '🎈' ? (
             <Balloon key={index} delay={item.delay} left={item.left} size={item.size}>
               🎈
             </Balloon>
