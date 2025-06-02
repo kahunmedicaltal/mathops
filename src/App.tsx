@@ -464,17 +464,18 @@ const LevelSelector = styled.div`
   gap: 0.5rem;
 `
 
-const LevelLabel = styled.label`
-  font-size: 1.1rem;
-  color: #333;
-  margin-bottom: 0.5rem;
-`
-
 const LevelButtons = styled.div`
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: center;
+`
+
+const InstructionText = styled.div`
+  color: #666;
+  font-size: 1rem;
+  margin: 0.5rem 0 1.5rem 0;
+  line-height: 1.4;
 `
 
 const LevelButton = styled.button<{ isSelected: boolean }>`
@@ -492,6 +493,48 @@ const LevelButton = styled.button<{ isSelected: boolean }>`
     background-color: ${props => props.isSelected ? '#3a3f9e' : '#535bf2'};
     opacity: 1;
   }
+`
+
+// Add these styled components near the other styled components
+const float = keyframes`
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100vh) rotate(360deg);
+    opacity: 0;
+  }
+`
+
+const CelebrationContainer = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1000;
+  overflow: hidden;
+`
+
+const CelebrationItem = styled.div<{ delay: number; left: number; size: number }>`
+  position: absolute;
+  bottom: -50px;
+  left: ${props => props.left}%;
+  width: ${props => props.size}px;
+  height: ${props => props.size}px;
+  animation: ${float} 3s ease-out ${props => props.delay}s forwards;
+  font-size: ${props => props.size}px;
+  opacity: 0;
+`
+
+const Balloon = styled(CelebrationItem)`
+  color: ${props => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
+`
+
+const Present = styled(CelebrationItem)`
+  color: ${props => ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'][Math.floor(Math.random() * 5)]};
 `
 
 function App() {
@@ -1151,10 +1194,35 @@ function App() {
     setIsFindSolutionPressed(false)
   }
 
+  // Add this component
+  const Celebration = () => {
+    const items = Array.from({ length: 20 }, (_, i) => ({
+      type: Math.random() > 0.5 ? '🎈' : '🎁',
+      delay: Math.random() * 2,
+      left: Math.random() * 100,
+      size: Math.random() * 20 + 20  // Random size between 20px and 40px
+    }))
+
+    return (
+      <CelebrationContainer>
+        {items.map((item, index) => (
+          item.type === '��' ? (
+            <Balloon key={index} delay={item.delay} left={item.left} size={item.size}>
+              🎈
+            </Balloon>
+          ) : (
+            <Present key={index} delay={item.delay} left={item.left} size={item.size}>
+              🎁
+            </Present>
+          )
+        ))}
+      </CelebrationContainer>
+    )
+  }
+
   return (
     <Container>
       <LevelSelector>
-        <LevelLabel>Select Difficulty Level:</LevelLabel>
         <LevelButtons>
           {(Object.entries(LEVEL_NAMES) as [string, string][]).map(([levelNum, name]) => (
             <LevelButton
@@ -1168,6 +1236,9 @@ function App() {
         </LevelButtons>
       </LevelSelector>
       <Title>Reach the target using all {POOL_SIZE} numbers</Title>
+      <InstructionText>
+        You can use the result of any calculation in subsequent lines
+      </InstructionText>
       <GameContainer>
         <TargetNumber>Target: {target}</TargetNumber>
         <NumbersContainer>
@@ -1255,11 +1326,16 @@ function App() {
             </CalculationLine>
           ))}
         </CalculationLinesContainer>
-        {showSuccess && <SuccessMessage>Success! You reached the target number!</SuccessMessage>}
+        {showSuccess && (
+          <>
+            <SuccessMessage>Success! You reached the target number!</SuccessMessage>
+            <Celebration />
+          </>
+        )}
         <ButtonContainer>
           <Button onClick={handleNewGame} isPressed={isNewGamePressed}>New</Button>
           <Button onClick={findHint} isPressed={isHintPressed}>Hint</Button>
-          <Button onClick={handleFindSolution} isPressed={isFindSolutionPressed}>Find Solution</Button>
+          <Button onClick={handleFindSolution} isPressed={isFindSolutionPressed}>Solve</Button>
         </ButtonContainer>
       </GameContainer>
     </Container>
