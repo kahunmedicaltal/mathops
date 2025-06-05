@@ -644,7 +644,6 @@ function App() {
   const levelParams = getLevelParams(level)
   const POOL_SIZE = levelParams.poolSize
   const AVAILABLE_NUMBERS = levelParams.availableNumbers
-  const OPERATIONS = levelParams.operations
 
   const [numbers, setNumbers] = useState<number[]>([])
   const [target, setTarget] = useState<number>(0)
@@ -653,14 +652,11 @@ function App() {
   )
   const [showSuccess, setShowSuccess] = useState(false)
   const [isNewGamePressed, setIsNewGamePressed] = useState(false)
-  const [isHintPressed, setIsHintPressed] = useState(false)
   const [isFindSolutionPressed, setIsFindSolutionPressed] = useState(false)
   const [isScorePressed, setIsScorePressed] = useState(false)
   const [storedSolution, setStoredSolution] = useState<SolutionStep[] | null>(null)
-  const [hintLineIndex, setHintLineIndex] = useState<number>(-1)  // -1 means no hints shown yet
   const [score, setScore] = useState<number>(0)
   const [scoreLines, setScoreLines] = useState<CalculationLine[] | null>(null)
-  const [bestScore, setBestScore] = useState<number>(0)
   const [bestResult, setBestResult] = useState<number | null>(null)
   const [bestDistance, setBestDistance] = useState<number>(Infinity)
 
@@ -672,7 +668,6 @@ function App() {
     setLevel(newLevel)
     setShowSuccess(false)
     setStoredSolution(null)
-    setHintLineIndex(-1)
     setScore(0)  // Reset score
     setScoreLines(null)  // Reset score lines
     setBestResult(null)  // Reset best result
@@ -928,7 +923,6 @@ function App() {
     setCalculationLines(Array(POOL_SIZE - 1).fill({ n1: null, op: null, n2: null, result: null, isComplete: false, isAnimating: false }));
     setShowSuccess(false);
     setStoredSolution(null);
-    setHintLineIndex(-1);
   }
 
   // Calculate used numbers from calculationLines
@@ -1210,12 +1204,26 @@ function App() {
 
     // Get the hint step for the current line
     const hintStep = solutions[0][currentLineIndex];
-    return {
-      n1: hintStep.n1,
-      op: hintStep.op as Operation,
-      n2: hintStep.n2,
-      result: hintStep.result
-    };
+    // Apply the hint
+    const newLines = [...calculationLines]
+    newLines[currentLineIndex] = {
+      n1: { 
+        value: typeof hintStep.n1 === 'number' ? hintStep.n1 : hintStep.n1.value, 
+        origin: typeof hintStep.n1 === 'number' ? { type: 'generated' as const } : { type: 'result' as const, lineIndex: hintStep.n1.lineIndex } 
+      },
+      op: hintStep.op,
+      n2: { 
+        value: typeof hintStep.n2 === 'number' ? hintStep.n2 : hintStep.n2.value, 
+        origin: typeof hintStep.n2 === 'number' ? { type: 'generated' as const } : { type: 'result' as const, lineIndex: hintStep.n2.lineIndex } 
+      },
+      result: hintStep.result,
+      isComplete: true,
+      isAnimating: false
+    }
+    setCalculationLines(newLines)
+    setStoredSolution(solutions[0])
+
+    return hintStep
   }
 
   // Add this component
@@ -1277,7 +1285,6 @@ function App() {
       setScore(prevScore => {
         if (newScore > prevScore) {
           setScoreLines([...lines])
-          setBestScore(prevBest => Math.max(prevBest, newScore))
           return newScore
         }
         return prevScore
@@ -1317,7 +1324,27 @@ function App() {
   const handleFindSolution = async () => {
     setIsFindSolutionPressed(true)
     await new Promise(resolve => setTimeout(resolve, 0))  // Ensure state update
-    findSolution()
+    const solution = findSolution()
+    if (solution) {
+      // Apply the solution
+      const newLines = solution.map((step, index) => ({
+        n1: { 
+          value: typeof step.n1 === 'number' ? step.n1 : step.n1.value, 
+          origin: typeof step.n1 === 'number' ? { type: 'generated' as const } : { type: 'result' as const, lineIndex: step.n1.lineIndex } 
+        },
+        op: step.op,
+        n2: { 
+          value: typeof step.n2 === 'number' ? step.n2 : step.n2.value, 
+          origin: typeof step.n2 === 'number' ? { type: 'generated' as const } : { type: 'result' as const, lineIndex: step.n2.lineIndex } 
+        },
+        result: step.result,
+        isComplete: true,
+        isAnimating: false
+      }))
+      setCalculationLines(newLines)
+      setShowSuccess(true)
+      setStoredSolution(solution)
+    }
     // Keep pressed state for a bit longer to show the effect
     await new Promise(resolve => setTimeout(resolve, 500))
     setIsFindSolutionPressed(false)
@@ -1371,7 +1398,6 @@ function App() {
     await new Promise(resolve => setTimeout(resolve, 0))  // Ensure state update
     generateRandomNumbers()
     setStoredSolution(null)
-    setHintLineIndex(-1)
     setScore(0)  // Reset score only when starting a new game
     setScoreLines(null)  // Reset score lines
     setBestResult(null)  // Reset best result
@@ -1523,7 +1549,12 @@ function App() {
         )}
         <ButtonContainer>
           <Button onClick={handleNewGame} isPressed={isNewGamePressed}>New</Button>
-          <Button onClick={findHint} isPressed={isHintPressed}>Hint</Button>
+          <Button onClick={() => {
+            const hint = findHint()
+            if (!hint) {
+              alert('No hint available!')
+            }
+          }}>Hint</Button>
           <Button onClick={handleFindSolution} isPressed={isFindSolutionPressed}>Solve</Button>
         </ButtonContainer>
       </GameContainer>
