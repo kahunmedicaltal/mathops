@@ -265,14 +265,6 @@ const EqualsSign = styled.div`
   margin: 0 0.5rem;
 `
 
-// Update the operations display
-const OPERATION_SYMBOLS: Record<Operation, string> = {
-  '+': '+',
-  '-': '-',
-  '*': '×',
-  ':': '÷'
-} as const;
-
 const DraggableNumber = styled.div<{ isUsed?: boolean; isAvailable?: boolean }>`
   background-color: ${props => {
     if (props.isUsed) return '#f5f5f5';
@@ -925,10 +917,10 @@ function App() {
     setStoredSolution(null);
   }
 
-  // Calculate used numbers from calculationLines
+  // Update getUsedNumbers to remove unused lineIndex parameter
   const getUsedNumbers = () => {
     const used = new Array(numbers.length).fill(false)
-    calculationLines.forEach((line, lineIndex) => {
+    calculationLines.forEach(line => {
       const n1 = line.n1
       const n2 = line.n2
       
@@ -1157,19 +1149,6 @@ function App() {
     }, 300)
   }
 
-  // Helper function to get origin for a solution step number
-  const getOrigin = (num: number | { value: number; lineIndex: number }) => {
-    if (typeof num === 'number') {
-      return { type: 'generated' as const };
-    }
-    return { type: 'result' as const, lineIndex: num.lineIndex };
-  };
-
-  // Helper function to get value for a solution step number
-  const getValue = (num: number | { value: number; lineIndex: number }) => {
-    return typeof num === 'number' ? num : num.value;
-  };
-
   // Update the findSolution function to ensure consistent Operation type usage
   const findSolution = (): SolutionStep[] | null => {
     const solutions = findAllSolutions(numbers, target, levelParams, 1);
@@ -1327,7 +1306,7 @@ function App() {
     const solution = findSolution()
     if (solution) {
       // Apply the solution
-      const newLines = solution.map((step, index) => ({
+      const newLines = solution.map(step => ({
         n1: { 
           value: typeof step.n1 === 'number' ? step.n1 : step.n1.value, 
           origin: typeof step.n1 === 'number' ? { type: 'generated' as const } : { type: 'result' as const, lineIndex: step.n1.lineIndex } 
@@ -1350,36 +1329,38 @@ function App() {
     setIsFindSolutionPressed(false)
   }
 
+  // Update findNextAvailablePosition to remove unused lineIndex parameter
   const findNextAvailablePosition = (type: 'number' | 'operation'): { lineIndex: number; position: DropPosition } | null => {
-    for (let lineIndex = 0; lineIndex < calculationLines.length; lineIndex++) {
-      const line = calculationLines[lineIndex]
+    for (let i = 0; i < calculationLines.length; i++) {
+      const line = calculationLines[i]
       
       if (type === 'number') {
         // For numbers, try n1 first, then n2
         if (line.n1 === null) {
-          return { lineIndex, position: 'n1' }
+          return { lineIndex: i, position: 'n1' }
         }
         if (line.n2 === null && line.n1 !== null && line.op !== null) {
-          return { lineIndex, position: 'n2' }
+          return { lineIndex: i, position: 'n2' }
         }
       } else if (type === 'operation') {
         // For operations, only try op position if n1 is filled
         if (line.op === null && line.n1 !== null) {
-          return { lineIndex, position: 'op' }
+          return { lineIndex: i, position: 'op' }
         }
       }
     }
     return null
   }
 
-  const handleClick = (value: number | string, type: 'number' | 'operation' | 'result', lineIndex?: number) => {
-    if (type === 'result' && lineIndex !== undefined) {
+  // Update handleClick to use the correct parameter name
+  const handleClick = (value: number | string, type: 'number' | 'operation' | 'result', resultLineIndex?: number) => {
+    if (type === 'result' && resultLineIndex !== undefined) {
       // For results, use the same logic as drag
       const nextPos = findNextAvailablePosition('number')
       if (nextPos) {
-        const resultValue = calculationLines[lineIndex].result
+        const resultValue = calculationLines[resultLineIndex].result
         if (resultValue !== null) {
-          const data = `result|${resultValue}|${lineIndex}`
+          const data = `result|${resultValue}|${resultLineIndex}`
           handleDrop(nextPos.lineIndex, nextPos.position, data)
         }
       }
